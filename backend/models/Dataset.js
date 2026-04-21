@@ -11,6 +11,7 @@ const datasetSchema = new mongoose.Schema({
   ipfsCid:    { type: String, default: '' },
   metadataUri:{ type: String, default: '' },
   authority:  { type: String, required: true },   // wallet public key
+  txSignature:{ type: String, default: '' },
   isActive:   { type: Boolean, default: true },
 }, { versionKey: false });
 

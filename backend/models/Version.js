@@ -7,6 +7,7 @@ const versionSchema = new mongoose.Schema({
   fileHash:          { type: String, required: true },
   changeDescription: { type: String, default: '' },
   updatedBy:         { type: String, required: true },
+  txSignature:       { type: String, default: '' },
   timestamp:         { type: Number, required: true },  // Unix timestamp (seconds)
   ipfsCid:           { type: String, default: '' },
 }, { versionKey: false });

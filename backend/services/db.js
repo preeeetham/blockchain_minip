@@ -163,6 +163,8 @@ async function registerDataset({ datasetId: suppliedId, name, description, fileH
   const datasetId = suppliedId || generateDatasetId(name, authority);
   const now = Math.floor(Date.now() / 1000);
 
+  const resolvedTxSig = txSignature || computeHash(`tx-${datasetId}-${now}`);
+
   const record = new Dataset({
     datasetId,
     name,
@@ -174,6 +176,7 @@ async function registerDataset({ datasetId: suppliedId, name, description, fileH
     ipfsCid: ipfsCid || '',
     metadataUri: metadataUri || '',
     authority,
+    txSignature: resolvedTxSig,
     isActive: true,
   });
 
@@ -186,11 +189,11 @@ async function registerDataset({ datasetId: suppliedId, name, description, fileH
     fileHash,
     changeDescription: 'Initial dataset registration',
     updatedBy: authority,
+    txSignature: resolvedTxSig,
     timestamp: now,
     ipfsCid: ipfsCid || '',
   }).save();
 
-  const resolvedTxSig = txSignature || computeHash(`tx-${datasetId}-${now}`);
   return { datasetId, record: record.toObject(), txSignature: resolvedTxSig };
 }
 
@@ -208,6 +211,7 @@ async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCi
 
   const now = Math.floor(Date.now() / 1000);
   const newVersionNumber = dataset.versionCount + 1;
+  const resolvedTxSig = txSignature || computeHash(`tx-update-${datasetId}-${now}`);
 
   const versionRecord = await new Version({
     datasetId,
@@ -216,6 +220,7 @@ async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCi
     fileHash: newFileHash,
     changeDescription: changeDescription || 'Version update',
     updatedBy: authority || dataset.authority,
+    txSignature: resolvedTxSig,
     timestamp: now,
     ipfsCid: ipfsCid || '',
   }).save();
@@ -223,9 +228,9 @@ async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCi
   dataset.currentHash = newFileHash;
   dataset.versionCount = newVersionNumber;
   dataset.updatedAt = now;
+  dataset.txSignature = resolvedTxSig;
   await dataset.save();
 
-  const resolvedTxSig = txSignature || computeHash(`tx-update-${datasetId}-${now}`);
   return { versionRecord: versionRecord.toObject(), txSignature: resolvedTxSig };
 }
 
@@ -256,6 +261,7 @@ async function transferOwnership(datasetId, newAuthority, authority, txSignature
 
   const now = Math.floor(Date.now() / 1000);
   const newVersionNumber = dataset.versionCount + 1;
+  const resolvedTxSig = txSignature || computeHash(`tx-transfer-${datasetId}-${now}`);
 
   const versionRecord = await new Version({
     datasetId,
@@ -264,6 +270,7 @@ async function transferOwnership(datasetId, newAuthority, authority, txSignature
     fileHash: dataset.currentHash,
     changeDescription: `Ownership transferred from ${authority} to ${newAuthority}`,
     updatedBy: authority,
+    txSignature: resolvedTxSig,
     timestamp: now,
     ipfsCid: dataset.ipfsCid || '',
   }).save();
@@ -271,9 +278,9 @@ async function transferOwnership(datasetId, newAuthority, authority, txSignature
   dataset.authority = newAuthority;
   dataset.versionCount = newVersionNumber;
   dataset.updatedAt = now;
+  dataset.txSignature = resolvedTxSig;
   await dataset.save();
 
-  const resolvedTxSig = txSignature || computeHash(`tx-transfer-${datasetId}-${now}`);
   return { success: true, newAuthority, txSignature: resolvedTxSig, versionRecord: versionRecord.toObject() };
 }
 
@@ -285,11 +292,13 @@ async function deactivateDataset(datasetId, authority, txSignature) {
     throw new Error('Unauthorized: only dataset owner can perform this action');
   }
 
+  const resolvedTxSig = txSignature || computeHash(`tx-deactivate-${datasetId}-${dataset.updatedAt}`);
+  
   dataset.isActive = false;
   dataset.updatedAt = Math.floor(Date.now() / 1000);
+  dataset.txSignature = resolvedTxSig;
   await dataset.save();
 
-  const resolvedTxSig = txSignature || computeHash(`tx-deactivate-${datasetId}-${dataset.updatedAt}`);
   return { success: true, txSignature: resolvedTxSig };
 }
 

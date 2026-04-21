@@ -648,6 +648,23 @@ export default function DatasetDetail({ addToast }) {
                       Prev: {v.previousHash.slice(0, 12)}...
                     </span>
                   )}
+                  {v.txSignature && (
+                    <a
+                      href={getExplorerUrl(v.txSignature)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="version-hash"
+                      style={{ color: 'var(--accent-cyan)', textDecoration: 'none', border: '1px solid rgba(0,183,255,0.2)' }}
+                      title={v.txSignature}
+                    >
+                      TX: {v.txSignature.slice(0, 8)}...
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '4px' }}>
+                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                        <polyline points="15,3 21,3 21,9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                  )}
                 </div>
               </motion.div>
             ))}
