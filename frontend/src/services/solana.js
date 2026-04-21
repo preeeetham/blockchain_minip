@@ -1,29 +1,48 @@
 import {
   Connection,
   PublicKey,
-  clusterApiUrl,
+  Transaction,
+  TransactionInstruction,
   SystemProgram,
+  clusterApiUrl,
 } from '@solana/web3.js';
-import { Program, AnchorProvider } from '@coral-xyz/anchor';
-import idl from '../idl/research_provenance.json';
 
-export const PROGRAM_ID = new PublicKey('FkZMTjPTBGEWUE2dRbdjLBjMPE4gwt1ME5G3qg3xbXwK');
+export const PROGRAM_ID = new PublicKey('F2PY8AKbNuTe36RuVHpgnxunkQWqwWy2MEnSMsNX2VqD');
 export const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-function getProvider(walletAdapter, publicKeyStr) {
-  const safeWallet = {
-    publicKey: new PublicKey(publicKeyStr),
-    signTransaction: walletAdapter.signTransaction.bind(walletAdapter),
-    signAllTransactions: walletAdapter.signAllTransactions.bind(walletAdapter)
-  };
-  const provider = new AnchorProvider(connection, safeWallet, { preflightCommitment: 'confirmed' });
-  return provider;
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the 8-byte Anchor instruction discriminator.
+ * Anchor uses sha256("global:<snake_case_name>")[0..8]
+ */
+async function getDiscriminator(instructionName) {
+  const msg = new TextEncoder().encode(`global:${instructionName}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msg);
+  return Buffer.from(new Uint8Array(hashBuffer).slice(0, 8));
 }
 
-function getProgram(walletAdapter, publicKeyStr) {
-  const provider = getProvider(walletAdapter, publicKeyStr);
-  return new Program(idl, PROGRAM_ID, provider);
+/** Borsh-encode a string: 4-byte LE length prefix + UTF-8 bytes */
+function borshString(str) {
+  const bytes = Buffer.from(str, 'utf-8');
+  const lenBuf = Buffer.alloc(4);
+  lenBuf.writeUInt32LE(bytes.length, 0);
+  return Buffer.concat([lenBuf, bytes]);
 }
+
+/** Borsh-encode a u32 (little-endian) */
+function borshU32(num) {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32LE(num, 0);
+  return buf;
+}
+
+/** Borsh-encode a Pubkey (32 raw bytes) */
+function borshPubkey(pubkey) {
+  return pubkey.toBuffer();
+}
+
+// ── PDA Derivation ─────────────────────────────────────────────────────────
 
 export function getDatasetPda(datasetId) {
   return PublicKey.findProgramAddressSync(
@@ -41,110 +60,148 @@ export function getVersionPda(datasetId, versionNumber) {
   )[0];
 }
 
+// ── Transaction Builder ────────────────────────────────────────────────────
+
+/**
+ * Build, sign via wallet, send, and confirm a transaction.
+ */
+async function buildAndSend(walletAdapter, walletPubkey, instruction) {
+  const tx = new Transaction().add(instruction);
+  tx.feePayer = walletPubkey;
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = blockhash;
+
+  const signed = await walletAdapter.signTransaction(tx);
+  const rawTx = signed.serialize();
+  const sig = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+
+  return sig;
+}
+
+// ── Instructions ───────────────────────────────────────────────────────────
+
 /**
  * Register a dataset on-chain
  */
-export async function registerDatasetOnChain(walletAdapter, publicKeyStr, datasetPayload) {
-  const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter, publicKeyStr);
-  
-  const datasetPda = getDatasetPda(datasetPayload.datasetId);
-  
-  console.log("DEBUG: datasetPda =", datasetPda);
-  console.log("DEBUG: walletPublicKey =", walletPublicKey);
-  console.log("DEBUG: SystemProgram.programId =", SystemProgram.programId);
-  console.log("DEBUG: DatasetPayload =", datasetPayload);
+export async function registerDatasetOnChain(walletAdapter, publicKeyStr, payload) {
+  const walletPubkey = new PublicKey(publicKeyStr);
+  const datasetPda = getDatasetPda(payload.datasetId);
 
-  const tx = await program.methods
-    .registerDataset(
-      datasetPayload.datasetId,
-      datasetPayload.name,
-      datasetPayload.description || "",
-      datasetPayload.fileHash,
-      datasetPayload.ipfsCid || "",
-      datasetPayload.metadataUri || ""
-    )
-    .accounts({
-      datasetRecord: datasetPda,
-      authority: walletPublicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  const disc = await getDiscriminator('register_dataset');
+  const data = Buffer.concat([
+    disc,
+    borshString(payload.datasetId),
+    borshString(payload.name),
+    borshString(payload.description || ''),
+    borshString(payload.fileHash),
+    borshString(payload.ipfsCid || ''),
+    borshString(payload.metadataUri || ''),
+  ]);
 
-  return { signature: tx };
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: datasetPda, isSigner: false, isWritable: true },
+      { pubkey: walletPubkey, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+
+  const sig = await buildAndSend(walletAdapter, walletPubkey, ix);
+  return { signature: sig };
 }
 
 /**
  * Update a dataset version on-chain
  */
 export async function updateDatasetOnChain(walletAdapter, publicKeyStr, updatePayload) {
-  const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter, publicKeyStr);
-
+  const walletPubkey = new PublicKey(publicKeyStr);
   const datasetPda = getDatasetPda(updatePayload.datasetId);
   const versionPda = getVersionPda(updatePayload.datasetId, updatePayload.versionNumber);
 
-  const tx = await program.methods
-    .updateDataset(
-      updatePayload.datasetId,
-      updatePayload.versionNumber,
-      updatePayload.newFileHash,
-      updatePayload.changeDescription || "Version update",
-      updatePayload.ipfsCid || ""
-    )
-    .accounts({
-      datasetRecord: datasetPda,
-      versionRecord: versionPda,
-      authority: walletPublicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  const disc = await getDiscriminator('update_dataset');
+  const data = Buffer.concat([
+    disc,
+    borshString(updatePayload.datasetId),
+    borshU32(updatePayload.versionNumber),
+    borshString(updatePayload.newFileHash),
+    borshString(updatePayload.changeDescription || 'Version update'),
+    borshString(updatePayload.ipfsCid || ''),
+  ]);
 
-  return { signature: tx };
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: datasetPda, isSigner: false, isWritable: true },
+      { pubkey: versionPda, isSigner: false, isWritable: true },
+      { pubkey: walletPubkey, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+
+  const sig = await buildAndSend(walletAdapter, walletPubkey, ix);
+  return { signature: sig };
 }
 
 /**
  * Transfer ownership of a dataset on-chain
  */
 export async function transferOwnershipOnChain(walletAdapter, publicKeyStr, payload) {
-  const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter, publicKeyStr);
-
+  const walletPubkey = new PublicKey(publicKeyStr);
   const datasetPda = getDatasetPda(payload.datasetId);
   const versionPda = getVersionPda(payload.datasetId, payload.versionNumber);
   const newAuthorityKey = new PublicKey(payload.newAuthority);
 
-  const tx = await program.methods
-    .transferOwnership(payload.datasetId, payload.versionNumber, newAuthorityKey)
-    .accounts({
-      datasetRecord: datasetPda,
-      versionRecord: versionPda,
-      authority: walletPublicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  const disc = await getDiscriminator('transfer_ownership');
+  const data = Buffer.concat([
+    disc,
+    borshString(payload.datasetId),
+    borshU32(payload.versionNumber),
+    borshPubkey(newAuthorityKey),
+  ]);
 
-  return { signature: tx };
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: datasetPda, isSigner: false, isWritable: true },
+      { pubkey: versionPda, isSigner: false, isWritable: true },
+      { pubkey: walletPubkey, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+
+  const sig = await buildAndSend(walletAdapter, walletPubkey, ix);
+  return { signature: sig };
 }
 
 /**
  * Deactivate a dataset on-chain
  */
 export async function deactivateDatasetOnChain(walletAdapter, publicKeyStr, payload) {
-  const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter, publicKeyStr);
-
+  const walletPubkey = new PublicKey(publicKeyStr);
   const datasetPda = getDatasetPda(payload.datasetId);
 
-  const tx = await program.methods
-    .deactivateDataset(payload.datasetId)
-    .accounts({
-      datasetRecord: datasetPda,
-      authority: walletPublicKey,
-    })
-    .rpc();
+  const disc = await getDiscriminator('deactivate_dataset');
+  const data = Buffer.concat([
+    disc,
+    borshString(payload.datasetId),
+  ]);
 
-  return { signature: tx };
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: datasetPda, isSigner: false, isWritable: true },
+      { pubkey: walletPubkey, isSigner: true, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+
+  const sig = await buildAndSend(walletAdapter, walletPubkey, ix);
+  return { signature: sig };
 }
 
 export function getExplorerUrl(signature, cluster = 'devnet') {

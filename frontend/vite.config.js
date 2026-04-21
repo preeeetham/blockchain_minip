@@ -6,16 +6,20 @@ export default defineConfig({
   plugins: [
     react(),
     nodePolyfills({
-      include: ['buffer'],
+      include: ['buffer', 'crypto', 'stream', 'util', 'process'],
       globals: {
         Buffer: true,
+        global: true,
+        process: true,
       },
     }),
   ],
   define: {
-    // Polyfill Node.js globals required by @solana/web3.js in the browser
     'global': 'globalThis',
     'process.env': '{}',
+  },
+  resolve: {
+    dedupe: ['@solana/web3.js', 'bn.js', 'buffer', '@coral-xyz/anchor'],
   },
   server: {
     port: 5173,

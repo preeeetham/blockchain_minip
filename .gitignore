@@ -28,6 +28,14 @@ Thumbs.db
 # Test scratch
 scratch_tests/
 
+# Generated test output
+test_results.json
+
+# Large dataset files (too big for GitHub — source from Kaggle)
+backend/datasets/train.csv
+backend/datasets/test.csv
+backend/datasets/sample_submission.csv
+
 # Anchor / Solana build artifacts
 target/
 .anchor/
