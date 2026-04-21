@@ -203,7 +203,10 @@ async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCi
     throw new Error('New file hash is identical to the current version — no changes detected');
   }
 
-  // Authority check omitted for demo mode — in production, verify a wallet signature
+  // Enforce authority check
+  if (dataset.authority !== authority) {
+    throw new Error('Unauthorized: only dataset owner can perform this action');
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const newVersionNumber = dataset.versionCount + 1;
@@ -245,6 +248,38 @@ async function verifyHash(hash) {
   return { found: false };
 }
 
+async function transferOwnership(datasetId, newAuthority, authority) {
+  const dataset = await Dataset.findOne({ datasetId, isActive: true });
+  if (!dataset) throw new Error('Dataset not found or inactive');
+
+  if (dataset.authority !== authority) {
+    throw new Error('Unauthorized: only dataset owner can perform this action');
+  }
+
+  dataset.authority = newAuthority;
+  dataset.updatedAt = Math.floor(Date.now() / 1000);
+  await dataset.save();
+
+  const txSignature = computeHash(`tx-transfer-${datasetId}-${dataset.updatedAt}`);
+  return { success: true, newAuthority, txSignature };
+}
+
+async function deactivateDataset(datasetId, authority) {
+  const dataset = await Dataset.findOne({ datasetId, isActive: true });
+  if (!dataset) throw new Error('Dataset not found or already inactive');
+
+  if (dataset.authority !== authority) {
+    throw new Error('Unauthorized: only dataset owner can perform this action');
+  }
+
+  dataset.isActive = false;
+  dataset.updatedAt = Math.floor(Date.now() / 1000);
+  await dataset.save();
+
+  const txSignature = computeHash(`tx-deactivate-${datasetId}-${dataset.updatedAt}`);
+  return { success: true, txSignature };
+}
+
 module.exports = {
   seedDemoData,
   getAllDatasets,
@@ -255,4 +290,6 @@ module.exports = {
   registerDataset,
   updateDataset,
   verifyHash,
+  transferOwnership,
+  deactivateDataset,
 };

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWallet } from '../context/WalletContext'
-import { updateDatasetOnChain, getExplorerUrl } from '../services/solana'
+import { updateDatasetOnChain, transferOwnershipOnChain, deactivateDatasetOnChain, getExplorerUrl } from '../services/solana'
 
 function formatDate(ts) {
   return new Date(ts * 1000).toLocaleDateString('en-US', {
@@ -33,6 +33,12 @@ export default function DatasetDetail({ addToast }) {
   const [updating, setUpdating]           = useState(false)
   const [updateStep, setUpdateStep]       = useState('')
   const [txSignature, setTxSignature]     = useState(null)
+
+  // Transfer & Deactivate state
+  const [showTransfer, setShowTransfer]   = useState(false)
+  const [newAuthority, setNewAuthority]   = useState('')
+  const [transferring, setTransferring]   = useState(false)
+  const [deactivating, setDeactivating]   = useState(false)
 
   const loadData = useCallback(() => {
     setLoading(true)
@@ -93,7 +99,7 @@ export default function DatasetDetail({ addToast }) {
           datasetId: id,
           newFileHash,
           changeDescription: changeDesc,
-          authority: publicKey || dataset.authority,
+          authority: publicKey,
         }),
       })
       const data = await res.json()
@@ -153,6 +159,119 @@ export default function DatasetDetail({ addToast }) {
     }
   }
 
+  const handleTransfer = async (e) => {
+    e.preventDefault()
+    if (!newAuthority.trim()) return
+
+    setTransferring(true)
+    let txSig = null
+
+    try {
+      const res = await fetch('/api/datasets/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datasetId: id,
+          newAuthority: newAuthority.trim(),
+          authority: publicKey,
+        }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        addToast(data.error || 'Transfer failed', 'error')
+        return
+      }
+
+      if (connected && publicKey) {
+        try {
+          const savedId = localStorage.getItem('dataprove_wallet')
+          let walletAdapter =
+            savedId === 'phantom'  ? window?.phantom?.solana :
+            savedId === 'solflare' ? window?.solflare :
+            savedId === 'backpack' ? window?.backpack :
+            window?.solana
+
+          if (walletAdapter) {
+            const { signature } = await transferOwnershipOnChain(
+              walletAdapter,
+              publicKey,
+              { datasetId: id, newAuthority: newAuthority.trim() }
+            )
+            txSig = signature
+          }
+        } catch (walletErr) {
+          addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
+        }
+      }
+
+      addToast(txSig
+        ? `Ownership transferred and confirmed on Solana! 🎉`
+        : `Ownership transferred successfully!`
+      )
+      setNewAuthority('')
+      setShowTransfer(false)
+      loadData()
+    } catch (err) {
+      addToast('Error: ' + err.message, 'error')
+    } finally {
+      setTransferring(false)
+    }
+  }
+
+  const handleDeactivate = async () => {
+    if (!confirm("Are you sure you want to deactivate this dataset? This action cannot be undone.")) return;
+    setDeactivating(true)
+    let txSig = null
+
+    try {
+      const res = await fetch('/api/datasets/deactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datasetId: id,
+          authority: publicKey,
+        }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        addToast(data.error || 'Deactivation failed', 'error')
+        return
+      }
+
+      if (connected && publicKey) {
+        try {
+          const savedId = localStorage.getItem('dataprove_wallet')
+          let walletAdapter =
+            savedId === 'phantom'  ? window?.phantom?.solana :
+            savedId === 'solflare' ? window?.solflare :
+            savedId === 'backpack' ? window?.backpack :
+            window?.solana
+
+          if (walletAdapter) {
+            const { signature } = await deactivateDatasetOnChain(
+              walletAdapter,
+              publicKey,
+              { datasetId: id }
+            )
+            txSig = signature
+          }
+        } catch (walletErr) {
+          addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
+        }
+      }
+
+      addToast(txSig
+        ? `Dataset deactivated and confirmed on Solana!`
+        : `Dataset deactivated successfully!`
+      )
+      loadData()
+    } catch (err) {
+      addToast('Error: ' + err.message, 'error')
+    } finally {
+      setDeactivating(false)
+    }
+  }
+
   // ── Loading / Not Found states ─────────────────────────────────────────────
   if (loading) {
     return (
@@ -177,6 +296,8 @@ export default function DatasetDetail({ addToast }) {
       </div>
     )
   }
+
+  const isOwner = connected && publicKey === dataset.authority;
 
   // ── Main render ─────────────────────────────────────────────────────────────
   return (
@@ -203,17 +324,36 @@ export default function DatasetDetail({ addToast }) {
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-            <span className="dataset-card-badge badge-active" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+            <span className={`dataset-card-badge ${dataset.isActive ? 'badge-active' : ''}`} style={{ fontSize: '0.8rem', padding: '6px 14px', background: !dataset.isActive ? 'rgba(255,107,53,0.1)' : undefined, color: !dataset.isActive ? '#ff6b35' : undefined, border: !dataset.isActive ? '1px solid rgba(255,107,53,0.2)' : undefined }}>
               {dataset.isActive ? '● Active' : '● Inactive'}
             </span>
-            {/* ── Update Button ── */}
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => { setShowUpdate(v => !v); setTxSignature(null) }}
-              style={{ fontSize: '0.82rem' }}
-            >
-              {showUpdate ? '✕ Cancel Update' : '↑ Update Version'}
-            </button>
+            {/* ── Action Buttons (Owner Only) ── */}
+            {isOwner && dataset.isActive && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button
+                   className="btn btn-primary btn-sm"
+                   onClick={() => { setShowUpdate(v => !v); setShowTransfer(false); setTxSignature(null) }}
+                   style={{ fontSize: '0.82rem' }}
+                 >
+                   {showUpdate ? '✕ Cancel Update' : '↑ Update'}
+                 </button>
+                 <button
+                   className="btn btn-secondary btn-sm"
+                   onClick={() => { setShowTransfer(v => !v); setShowUpdate(false); setTxSignature(null) }}
+                   style={{ fontSize: '0.82rem' }}
+                 >
+                   {showTransfer ? '✕ Cancel Transfer' : '🔄 Transfer'}
+                 </button>
+                 <button
+                   className="btn btn-ghost btn-sm"
+                   onClick={handleDeactivate}
+                   disabled={deactivating}
+                   style={{ fontSize: '0.82rem', color: '#ff6b35', border: '1px solid rgba(255, 107, 53, 0.3)' }}
+                 >
+                   {deactivating ? '...' : '🛑 Deactivate'}
+                 </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -386,7 +526,7 @@ export default function DatasetDetail({ addToast }) {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                         <span style={{ fontSize: '1.2rem' }}>✅</span>
-                        <strong style={{ color: 'var(--accent-green)' }}>Confirmed on Solana Devnet!</strong>
+                        <strong style={{ color: 'var(--accent-green)' }}>Confirmed on Solana !</strong>
                       </div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: '10px' }}>
                         {txSignature}
@@ -398,6 +538,65 @@ export default function DatasetDetail({ addToast }) {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </form>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Transfer Ownership Panel ─────────────────────────────────── */}
+      <AnimatePresence>
+        {showTransfer && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -10 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -10 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="glass-card" style={{
+              border: '1px solid rgba(0,183,255,0.25)',
+              marginBottom: 'var(--space-xl)',
+              padding: 'var(--space-xl)',
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--accent-cyan)' }}>
+                🔄 Transfer Dataset Ownership
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', fontSize: '0.9rem' }}>
+                Transferring ownership grants full control (including updates and deactivation) to the new wallet address. You will lose access to administrative functions for this dataset.
+              </p>
+
+              <form onSubmit={handleTransfer}>
+                <div className="input-group" style={{ marginBottom: 'var(--space-lg)' }}>
+                  <label>New Owner Wallet Address *</label>
+                  <input
+                    type="text"
+                    className="input-field mono"
+                    placeholder="e.g. 7xKXtg2CW..."
+                    value={newAuthority}
+                    onChange={e => setNewAuthority(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost"
+                    onClick={() => setShowTransfer(false)}
+                    disabled={transferring}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-secondary"
+                    disabled={transferring || !newAuthority}
+                    style={{ background: 'var(--accent-cyan)', color: '#000' }}
+                  >
+                    {transferring ? (
+                      <><div className="spinner" style={{ width: 16, height: 16, filter: 'invert(1)' }}></div> Processing...</>
+                    ) : 'Confirm Transfer 🔄'}
+                  </button>
+                </div>
               </form>
             </div>
           </motion.div>

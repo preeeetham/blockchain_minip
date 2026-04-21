@@ -1,118 +1,139 @@
 import {
   Connection,
-  Transaction,
-  TransactionInstruction,
   PublicKey,
   clusterApiUrl,
   SystemProgram,
-} from '@solana/web3.js'
+} from '@solana/web3.js';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+import idl from '../idl/research_provenance.json';
 
-// SPL Memo Program — available on all Solana clusters, no deployment needed.
-// It records any UTF-8 string as an on-chain memo signed by the wallet.
-const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr')
+export const PROGRAM_ID = new PublicKey('FkZMTjPTBGEWUE2dRbdjLBjMPE4gwt1ME5G3qg3xbXwK');
+export const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-export const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
+function getProvider(walletAdapter) {
+  const provider = new AnchorProvider(connection, walletAdapter, { preflightCommitment: 'confirmed' });
+  return provider;
+}
 
-/**
- * Build a Memo instruction embedding dataset provenance data.
- * The memo is a compact JSON string containing the hash and key metadata.
- */
-function buildMemoInstruction(walletPublicKey, memoPayload) {
-  const memoString = JSON.stringify(memoPayload)
-  return new TransactionInstruction({
-    keys: [{ pubkey: walletPublicKey, isSigner: true, isWritable: false }],
-    programId: MEMO_PROGRAM_ID,
-    data: new TextEncoder().encode(memoString), // TextEncoder is browser-native (no Buffer needed)
-  })
+function getProgram(walletAdapter) {
+  const provider = getProvider(walletAdapter);
+  return new Program(idl, PROGRAM_ID, provider);
+}
+
+export function getDatasetPda(datasetId, authorityPubkey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("dataset"), Buffer.from(datasetId), authorityPubkey.toBuffer()],
+    PROGRAM_ID
+  )[0];
+}
+
+export function getVersionPda(datasetId, versionNumber) {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32LE(versionNumber, 0);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("version"), Buffer.from(datasetId), buf],
+    PROGRAM_ID
+  )[0];
 }
 
 /**
- * Register a dataset on-chain via a signed Memo transaction.
- *
- * @param {object} walletAdapter  - connected wallet (window.phantom.solana, etc.)
- * @param {string} publicKeyStr   - wallet public key string
- * @param {object} datasetPayload - { name, fileHash, datasetId, version, timestamp }
- * @returns {{ signature: string }}
+ * Register a dataset on-chain
  */
 export async function registerDatasetOnChain(walletAdapter, publicKeyStr, datasetPayload) {
-  const walletPublicKey = new PublicKey(publicKeyStr)
+  const walletPublicKey = new PublicKey(publicKeyStr);
+  const program = getProgram(walletAdapter);
+  
+  const datasetPda = getDatasetPda(datasetPayload.datasetId, walletPublicKey);
 
-  const memo = {
-    app: 'DataProve',
-    action: 'REGISTER_DATASET',
-    datasetId: datasetPayload.datasetId,
-    name: datasetPayload.name,
-    hash: datasetPayload.fileHash,
-    version: 1,
-    ts: Math.floor(Date.now() / 1000),
-  }
+  const tx = await program.methods
+    .registerDataset(
+      datasetPayload.datasetId,
+      datasetPayload.name,
+      datasetPayload.description || "",
+      datasetPayload.fileHash,
+      datasetPayload.ipfsCid || "",
+      datasetPayload.metadataUri || ""
+    )
+    .accounts({
+      datasetRecord: datasetPda,
+      authority: walletPublicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
 
-  const transaction = new Transaction()
-  transaction.add(buildMemoInstruction(walletPublicKey, memo))
-  transaction.feePayer = walletPublicKey
-
-  // Get latest blockhash (required for transaction validity)
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
-  transaction.recentBlockhash = blockhash
-
-  // 🔑 This triggers the Phantom / Solflare / Backpack popup!
-  const signedTx = await walletAdapter.signTransaction(transaction)
-
-  // Broadcast to Solana devnet
-  const rawTx = signedTx.serialize()
-  const signature = await connection.sendRawTransaction(rawTx, {
-    skipPreflight: false,
-    preflightCommitment: 'confirmed',
-  })
-
-  // Wait for confirmation
-  await connection.confirmTransaction(
-    { signature, blockhash, lastValidBlockHeight },
-    'confirmed'
-  )
-
-  return { signature }
+  return { signature: tx };
 }
 
 /**
- * Update dataset version on-chain via signed Memo transaction.
+ * Update a dataset version on-chain
  */
 export async function updateDatasetOnChain(walletAdapter, publicKeyStr, updatePayload) {
-  const walletPublicKey = new PublicKey(publicKeyStr)
+  const walletPublicKey = new PublicKey(publicKeyStr);
+  const program = getProgram(walletAdapter);
 
-  const memo = {
-    app: 'DataProve',
-    action: 'UPDATE_DATASET',
-    datasetId: updatePayload.datasetId,
-    newHash: updatePayload.newFileHash,
-    version: updatePayload.versionNumber,
-    ts: Math.floor(Date.now() / 1000),
-  }
+  const datasetPda = getDatasetPda(updatePayload.datasetId, walletPublicKey);
+  const versionPda = getVersionPda(updatePayload.datasetId, updatePayload.versionNumber);
 
-  const transaction = new Transaction()
-  transaction.add(buildMemoInstruction(walletPublicKey, memo))
-  transaction.feePayer = walletPublicKey
+  const tx = await program.methods
+    .updateDataset(
+      updatePayload.datasetId,
+      updatePayload.versionNumber,
+      updatePayload.newFileHash,
+      updatePayload.changeDescription || "Version update",
+      updatePayload.ipfsCid || ""
+    )
+    .accounts({
+      datasetRecord: datasetPda,
+      versionRecord: versionPda,
+      authority: walletPublicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
-  transaction.recentBlockhash = blockhash
-
-  const signedTx = await walletAdapter.signTransaction(transaction)
-  const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-    skipPreflight: false,
-    preflightCommitment: 'confirmed',
-  })
-
-  await connection.confirmTransaction(
-    { signature, blockhash, lastValidBlockHeight },
-    'confirmed'
-  )
-
-  return { signature }
+  return { signature: tx };
 }
 
 /**
- * Get the Solana Explorer URL for a transaction signature.
+ * Transfer ownership of a dataset on-chain
  */
+export async function transferOwnershipOnChain(walletAdapter, publicKeyStr, payload) {
+  const walletPublicKey = new PublicKey(publicKeyStr);
+  const program = getProgram(walletAdapter);
+
+  const datasetPda = getDatasetPda(payload.datasetId, walletPublicKey);
+  const newAuthorityKey = new PublicKey(payload.newAuthority);
+
+  const tx = await program.methods
+    .transferOwnership(payload.datasetId, newAuthorityKey)
+    .accounts({
+      datasetRecord: datasetPda,
+      authority: walletPublicKey,
+    })
+    .rpc();
+
+  return { signature: tx };
+}
+
+/**
+ * Deactivate a dataset on-chain
+ */
+export async function deactivateDatasetOnChain(walletAdapter, publicKeyStr, payload) {
+  const walletPublicKey = new PublicKey(publicKeyStr);
+  const program = getProgram(walletAdapter);
+
+  const datasetPda = getDatasetPda(payload.datasetId, walletPublicKey);
+
+  const tx = await program.methods
+    .deactivateDataset(payload.datasetId)
+    .accounts({
+      datasetRecord: datasetPda,
+      authority: walletPublicKey,
+    })
+    .rpc();
+
+  return { signature: tx };
+}
+
 export function getExplorerUrl(signature, cluster = 'devnet') {
-  return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`
+  return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`;
 }

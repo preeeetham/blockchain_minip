@@ -156,5 +156,34 @@ router.get('/:id/versions', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+// ─── POST /api/datasets/transfer ────────────────────────────
+router.post('/transfer', async (req, res) => {
+  try {
+    const { datasetId, newAuthority, authority } = req.body;
+    if (!datasetId || !newAuthority || !authority) {
+      return res.status(400).json({ success: false, error: 'datasetId, newAuthority, and authority are required' });
+    }
+
+    const result = await db.transferOwnership(datasetId, newAuthority, authority);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ─── POST /api/datasets/deactivate ──────────────────────────
+router.post('/deactivate', async (req, res) => {
+  try {
+    const { datasetId, authority } = req.body;
+    if (!datasetId || !authority) {
+      return res.status(400).json({ success: false, error: 'datasetId and authority are required' });
+    }
+
+    const result = await db.deactivateDataset(datasetId, authority);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;

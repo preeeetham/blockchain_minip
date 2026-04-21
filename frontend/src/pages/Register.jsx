@@ -86,7 +86,14 @@ export default function Register({ addToast }) {
             const { signature } = await registerDatasetOnChain(
               walletAdapter,
               publicKey,
-              { datasetId: data.datasetId, name: form.name, fileHash }
+              { 
+                datasetId: data.datasetId, 
+                name: form.name, 
+                fileHash,
+                description: form.description,
+                ipfsCid: form.ipfsCid,
+                metadataUri: form.metadataUri
+              }
             )
             txSig = signature
             setTxSignature(signature)
