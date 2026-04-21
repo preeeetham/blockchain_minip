@@ -77,7 +77,7 @@ export default function WalletModal() {
                       <div className="wallet-item-icon">
                         {w.icon
                           ? <img src={w.icon} alt={w.name} onError={e => e.target.style.display='none'} />
-                          : <span>🔑</span>}
+                          : <span></span>}
                       </div>
                       <div className="wallet-item-info">
                         <div className="wallet-item-name">{w.name}</div>
@@ -97,7 +97,7 @@ export default function WalletModal() {
             {/* No wallets detected */}
             {available.length === 0 && (
               <div className="wallet-modal-no-wallets">
-                <div className="wallet-modal-no-icon">🔍</div>
+                <div className="wallet-modal-no-icon"></div>
                 <p>No Solana wallet detected in your browser.</p>
                 <p className="wallet-modal-no-sub">Install one of the wallets below to get started.</p>
               </div>
@@ -121,7 +121,7 @@ export default function WalletModal() {
                       <div className="wallet-item-icon wallet-item-icon-dim">
                         {w.icon
                           ? <img src={w.icon} alt={w.name} onError={e => e.target.style.display='none'} />
-                          : <span>🔑</span>}
+                          : <span></span>}
                       </div>
                       <div className="wallet-item-info">
                         <div className="wallet-item-name">{w.name}</div>

@@ -142,7 +142,7 @@ export default function Dashboard({ addToast }) {
                     </div>
                   </div>
                   <div className="dataset-card-hash" title={ds.currentHash}>
-                    🔒 {ds.currentHash}
+                     {ds.currentHash}
                   </div>
                 </div>
               </Link>
@@ -154,7 +154,7 @@ export default function Dashboard({ addToast }) {
       {/* Empty State */}
       {!loading && filtered.length === 0 && (
         <div className="empty-state">
-          <div className="empty-state-icon">📭</div>
+          <div className="empty-state-icon"></div>
           <h3>No Datasets Found</h3>
           <p>
             {search ? `No results for "${search}".` : 'Register your first dataset to get started.'}

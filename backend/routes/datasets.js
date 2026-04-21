@@ -53,22 +53,24 @@ router.get('/verify/:hash', async (req, res) => {
 // ─── POST /api/datasets/register ────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, description, fileHash, ipfsCid, metadataUri, authority } = req.body;
+    const { datasetId, name, description, fileHash, ipfsCid, metadataUri, authority, txSignature } = req.body;
 
-    if (!name || !fileHash) {
-      return res.status(400).json({ success: false, error: 'name and fileHash are required' });
+    if (!name || !fileHash || !authority) {
+      return res.status(400).json({ success: false, error: 'name, fileHash, and authority are required' });
     }
     if (!isValidHash(fileHash)) {
       return res.status(400).json({ success: false, error: 'Invalid SHA-256 hash (must be 64 hex chars)' });
     }
 
     const result = await db.registerDataset({
+      datasetId,
       name,
       description: description || '',
       fileHash,
       ipfsCid: ipfsCid || '',
       metadataUri: metadataUri || '',
-      authority: authority || ('DemoWallet' + Date.now()),
+      authority,
+      txSignature: txSignature || null,
     });
 
     res.status(201).json({
@@ -84,10 +86,10 @@ router.post('/register', async (req, res) => {
 // ─── POST /api/datasets/update ──────────────────────────────
 router.post('/update', async (req, res) => {
   try {
-    const { datasetId, newFileHash, changeDescription, ipfsCid, authority } = req.body;
+    const { datasetId, newFileHash, changeDescription, ipfsCid, authority, txSignature } = req.body;
 
-    if (!datasetId || !newFileHash) {
-      return res.status(400).json({ success: false, error: 'datasetId and newFileHash are required' });
+    if (!datasetId || !newFileHash || !authority) {
+      return res.status(400).json({ success: false, error: 'datasetId, newFileHash, and authority are required' });
     }
     if (!isValidHash(newFileHash)) {
       return res.status(400).json({ success: false, error: 'Invalid SHA-256 hash (must be 64 hex chars)' });
@@ -98,7 +100,8 @@ router.post('/update', async (req, res) => {
       newFileHash,
       changeDescription: changeDescription || 'Version update',
       ipfsCid: ipfsCid || '',
-      authority: authority || '',
+      authority,
+      txSignature: txSignature || null,
     });
 
     res.json({
@@ -159,12 +162,12 @@ router.get('/:id/versions', async (req, res) => {
 // ─── POST /api/datasets/transfer ────────────────────────────
 router.post('/transfer', async (req, res) => {
   try {
-    const { datasetId, newAuthority, authority } = req.body;
+    const { datasetId, newAuthority, authority, txSignature } = req.body;
     if (!datasetId || !newAuthority || !authority) {
       return res.status(400).json({ success: false, error: 'datasetId, newAuthority, and authority are required' });
     }
 
-    const result = await db.transferOwnership(datasetId, newAuthority, authority);
+    const result = await db.transferOwnership(datasetId, newAuthority, authority, txSignature);
     res.json(result);
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -174,12 +177,12 @@ router.post('/transfer', async (req, res) => {
 // ─── POST /api/datasets/deactivate ──────────────────────────
 router.post('/deactivate', async (req, res) => {
   try {
-    const { datasetId, authority } = req.body;
+    const { datasetId, authority, txSignature } = req.body;
     if (!datasetId || !authority) {
       return res.status(400).json({ success: false, error: 'datasetId and authority are required' });
     }
 
-    const result = await db.deactivateDataset(datasetId, authority);
+    const result = await db.deactivateDataset(datasetId, authority, txSignature);
     res.json(result);
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });

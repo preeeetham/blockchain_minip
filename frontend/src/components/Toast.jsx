@@ -13,7 +13,7 @@ export default function Toast({ toasts }) {
             exit={{ opacity: 0, x: 100, scale: 0.8 }}
             transition={{ type: 'spring', damping: 20 }}
           >
-            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
+            <span>{toast.type === 'success' ? '' : ''}</span>
             <span>{toast.message}</span>
           </motion.div>
         ))}

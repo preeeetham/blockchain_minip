@@ -10,19 +10,24 @@ import idl from '../idl/research_provenance.json';
 export const PROGRAM_ID = new PublicKey('FkZMTjPTBGEWUE2dRbdjLBjMPE4gwt1ME5G3qg3xbXwK');
 export const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-function getProvider(walletAdapter) {
-  const provider = new AnchorProvider(connection, walletAdapter, { preflightCommitment: 'confirmed' });
+function getProvider(walletAdapter, publicKeyStr) {
+  const safeWallet = {
+    publicKey: new PublicKey(publicKeyStr),
+    signTransaction: walletAdapter.signTransaction.bind(walletAdapter),
+    signAllTransactions: walletAdapter.signAllTransactions.bind(walletAdapter)
+  };
+  const provider = new AnchorProvider(connection, safeWallet, { preflightCommitment: 'confirmed' });
   return provider;
 }
 
-function getProgram(walletAdapter) {
-  const provider = getProvider(walletAdapter);
+function getProgram(walletAdapter, publicKeyStr) {
+  const provider = getProvider(walletAdapter, publicKeyStr);
   return new Program(idl, PROGRAM_ID, provider);
 }
 
-export function getDatasetPda(datasetId, authorityPubkey) {
+export function getDatasetPda(datasetId) {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("dataset"), Buffer.from(datasetId), authorityPubkey.toBuffer()],
+    [Buffer.from("dataset"), Buffer.from(datasetId)],
     PROGRAM_ID
   )[0];
 }
@@ -41,9 +46,14 @@ export function getVersionPda(datasetId, versionNumber) {
  */
 export async function registerDatasetOnChain(walletAdapter, publicKeyStr, datasetPayload) {
   const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter);
+  const program = getProgram(walletAdapter, publicKeyStr);
   
-  const datasetPda = getDatasetPda(datasetPayload.datasetId, walletPublicKey);
+  const datasetPda = getDatasetPda(datasetPayload.datasetId);
+  
+  console.log("DEBUG: datasetPda =", datasetPda);
+  console.log("DEBUG: walletPublicKey =", walletPublicKey);
+  console.log("DEBUG: SystemProgram.programId =", SystemProgram.programId);
+  console.log("DEBUG: DatasetPayload =", datasetPayload);
 
   const tx = await program.methods
     .registerDataset(
@@ -69,9 +79,9 @@ export async function registerDatasetOnChain(walletAdapter, publicKeyStr, datase
  */
 export async function updateDatasetOnChain(walletAdapter, publicKeyStr, updatePayload) {
   const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter);
+  const program = getProgram(walletAdapter, publicKeyStr);
 
-  const datasetPda = getDatasetPda(updatePayload.datasetId, walletPublicKey);
+  const datasetPda = getDatasetPda(updatePayload.datasetId);
   const versionPda = getVersionPda(updatePayload.datasetId, updatePayload.versionNumber);
 
   const tx = await program.methods
@@ -98,16 +108,19 @@ export async function updateDatasetOnChain(walletAdapter, publicKeyStr, updatePa
  */
 export async function transferOwnershipOnChain(walletAdapter, publicKeyStr, payload) {
   const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter);
+  const program = getProgram(walletAdapter, publicKeyStr);
 
-  const datasetPda = getDatasetPda(payload.datasetId, walletPublicKey);
+  const datasetPda = getDatasetPda(payload.datasetId);
+  const versionPda = getVersionPda(payload.datasetId, payload.versionNumber);
   const newAuthorityKey = new PublicKey(payload.newAuthority);
 
   const tx = await program.methods
-    .transferOwnership(payload.datasetId, newAuthorityKey)
+    .transferOwnership(payload.datasetId, payload.versionNumber, newAuthorityKey)
     .accounts({
       datasetRecord: datasetPda,
+      versionRecord: versionPda,
       authority: walletPublicKey,
+      systemProgram: SystemProgram.programId,
     })
     .rpc();
 
@@ -119,9 +132,9 @@ export async function transferOwnershipOnChain(walletAdapter, publicKeyStr, payl
  */
 export async function deactivateDatasetOnChain(walletAdapter, publicKeyStr, payload) {
   const walletPublicKey = new PublicKey(publicKeyStr);
-  const program = getProgram(walletAdapter);
+  const program = getProgram(walletAdapter, publicKeyStr);
 
-  const datasetPda = getDatasetPda(payload.datasetId, walletPublicKey);
+  const datasetPda = getDatasetPda(payload.datasetId);
 
   const tx = await program.methods
     .deactivateDataset(payload.datasetId)

@@ -79,6 +79,11 @@ export default function DatasetDetail({ addToast }) {
       addToast('Please describe what changed in this version', 'error')
       return
     }
+    if (!connected || !publicKey) {
+      addToast('Please connect your Solana wallet first', 'error')
+      return
+    }
+
     // ── Guard: same file = same hash = no real change ──────────────
     if (newFileHash === dataset.currentHash) {
       addToast('This file is identical to the current version — no change detected. Upload a modified file to create a new version.', 'error')
@@ -90,8 +95,29 @@ export default function DatasetDetail({ addToast }) {
     let txSig = null
 
     try {
-      // ── Step 1: Save new version to backend ──────────────────
-      setUpdateStep('Saving new version...')
+      // ── Step 1: Sign on-chain ─────────────
+      setUpdateStep('Waiting for wallet approval...')
+      const savedId = localStorage.getItem('dataprove_wallet')
+      let walletAdapter = null
+      if (savedId === 'phantom') walletAdapter = window?.phantom?.solana
+      else if (savedId === 'solflare') walletAdapter = window?.solflare
+      else if (savedId === 'backpack') walletAdapter = window?.backpack
+      else walletAdapter = window?.solana
+
+      if (!walletAdapter) throw new Error('Wallet extension not found')
+
+      setUpdateStep('Sign the transaction in your wallet...')
+      const targetVersionNum = dataset.versionCount + 1
+      const { signature } = await updateDatasetOnChain(
+        walletAdapter,
+        publicKey,
+        { datasetId: id, newFileHash, versionNumber: targetVersionNum, changeDescription: changeDesc }
+      )
+      txSig = signature
+      setTxSignature(signature)
+      setUpdateStep('Transaction confirmed! Syncing record...')
+
+      // ── Step 2: Save new version to backend ──────────────────
       const res = await fetch('/api/datasets/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,61 +126,30 @@ export default function DatasetDetail({ addToast }) {
           newFileHash,
           changeDescription: changeDesc,
           authority: publicKey,
+          txSignature: txSig,
         }),
       })
       const data = await res.json()
       if (!data.success) {
-        addToast(data.error || 'Update failed', 'error')
-        return
-      }
-
-      // ── Step 2: Sign on-chain if wallet connected ─────────────
-      if (connected && publicKey) {
-        try {
-          setUpdateStep('Waiting for wallet approval...')
-          const savedId = localStorage.getItem('dataprove_wallet')
-          let walletAdapter =
-            savedId === 'phantom'  ? window?.phantom?.solana :
-            savedId === 'solflare' ? window?.solflare :
-            savedId === 'backpack' ? window?.backpack :
-            window?.solana
-
-          if (walletAdapter) {
-            setUpdateStep('Sign the transaction in your wallet...')
-            const { signature } = await updateDatasetOnChain(
-              walletAdapter,
-              publicKey,
-              { datasetId: id, newFileHash, versionNumber: data.versionRecord.versionNumber }
-            )
-            txSig = signature
-            setTxSignature(signature)
-            setUpdateStep('Transaction confirmed!')
-          }
-        } catch (walletErr) {
-          if (walletErr.message?.includes('rejected') || walletErr.code === 4001) {
-            addToast('Transaction rejected by wallet', 'error')
-          } else {
-            addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
-          }
-        }
+        throw new Error(data.error || 'Server sync failed')
       }
 
       // ── Step 3: Refresh ───────────────────────────────────────
-      addToast(txSig
-        ? `Version ${data.versionRecord.versionNumber} signed & recorded on Solana! 🎉`
-        : `Version ${data.versionRecord.versionNumber} saved successfully!`
-      )
+      addToast(`Version ${data.versionRecord.versionNumber} signed & recorded on Solana!`)
       // Reset form + reload data
       setNewFileHash('')
       setNewFileName('')
       setChangeDesc('')
-      if (!txSig) setShowUpdate(false)
       loadData()
 
     } catch (err) {
-      addToast('Error: ' + err.message, 'error')
+      if (err.message?.includes('rejected') || err.code === 4001) {
+        addToast('Transaction rejected by wallet', 'error')
+      } else {
+        addToast('Error: ' + err.message, 'error')
+      }
     } finally {
-      if (!txSig) setUpdating(false)
+      setUpdating(false)
       setUpdateStep('')
     }
   }
@@ -163,10 +158,32 @@ export default function DatasetDetail({ addToast }) {
     e.preventDefault()
     if (!newAuthority.trim()) return
 
+    if (!connected || !publicKey) {
+      addToast('Please connect your Solana wallet first', 'error')
+      return
+    }
+
     setTransferring(true)
     let txSig = null
 
     try {
+      const savedId = localStorage.getItem('dataprove_wallet')
+      let walletAdapter = null
+      if (savedId === 'phantom') walletAdapter = window?.phantom?.solana
+      else if (savedId === 'solflare') walletAdapter = window?.solflare
+      else if (savedId === 'backpack') walletAdapter = window?.backpack
+      else walletAdapter = window?.solana
+
+      if (!walletAdapter) throw new Error('Wallet extension not found')
+
+      const targetVersionNum = dataset.versionCount + 1
+      const { signature } = await transferOwnershipOnChain(
+        walletAdapter,
+        publicKey,
+        { datasetId: id, newAuthority: newAuthority.trim(), versionNumber: targetVersionNum }
+      )
+      txSig = signature
+
       const res = await fetch('/api/datasets/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,45 +191,24 @@ export default function DatasetDetail({ addToast }) {
           datasetId: id,
           newAuthority: newAuthority.trim(),
           authority: publicKey,
+          txSignature: txSig,
         }),
       })
       const data = await res.json()
       if (!data.success) {
-        addToast(data.error || 'Transfer failed', 'error')
-        return
+        throw new Error(data.error || 'Server sync failed')
       }
 
-      if (connected && publicKey) {
-        try {
-          const savedId = localStorage.getItem('dataprove_wallet')
-          let walletAdapter =
-            savedId === 'phantom'  ? window?.phantom?.solana :
-            savedId === 'solflare' ? window?.solflare :
-            savedId === 'backpack' ? window?.backpack :
-            window?.solana
-
-          if (walletAdapter) {
-            const { signature } = await transferOwnershipOnChain(
-              walletAdapter,
-              publicKey,
-              { datasetId: id, newAuthority: newAuthority.trim() }
-            )
-            txSig = signature
-          }
-        } catch (walletErr) {
-          addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
-        }
-      }
-
-      addToast(txSig
-        ? `Ownership transferred and confirmed on Solana! 🎉`
-        : `Ownership transferred successfully!`
-      )
+      addToast(`Ownership transferred and confirmed on Solana!`)
       setNewAuthority('')
       setShowTransfer(false)
       loadData()
     } catch (err) {
-      addToast('Error: ' + err.message, 'error')
+      if (err.message?.includes('rejected') || err.code === 4001) {
+        addToast('Transaction rejected by wallet', 'error')
+      } else {
+        addToast('Error: ' + err.message, 'error')
+      }
     } finally {
       setTransferring(false)
     }
@@ -220,53 +216,54 @@ export default function DatasetDetail({ addToast }) {
 
   const handleDeactivate = async () => {
     if (!confirm("Are you sure you want to deactivate this dataset? This action cannot be undone.")) return;
+    
+    if (!connected || !publicKey) {
+      addToast('Please connect your Solana wallet first', 'error')
+      return
+    }
+
     setDeactivating(true)
     let txSig = null
 
     try {
+      const savedId = localStorage.getItem('dataprove_wallet')
+      let walletAdapter = null
+      if (savedId === 'phantom') walletAdapter = window?.phantom?.solana
+      else if (savedId === 'solflare') walletAdapter = window?.solflare
+      else if (savedId === 'backpack') walletAdapter = window?.backpack
+      else walletAdapter = window?.solana
+
+      if (!walletAdapter) throw new Error('Wallet extension not found')
+
+      const { signature } = await deactivateDatasetOnChain(
+        walletAdapter,
+        publicKey,
+        { datasetId: id }
+      )
+      txSig = signature
+
       const res = await fetch('/api/datasets/deactivate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           datasetId: id,
           authority: publicKey,
+          txSignature: txSig,
         }),
       })
       const data = await res.json()
       if (!data.success) {
-        addToast(data.error || 'Deactivation failed', 'error')
-        return
+        throw new Error(data.error || 'Server sync failed')
       }
 
-      if (connected && publicKey) {
-        try {
-          const savedId = localStorage.getItem('dataprove_wallet')
-          let walletAdapter =
-            savedId === 'phantom'  ? window?.phantom?.solana :
-            savedId === 'solflare' ? window?.solflare :
-            savedId === 'backpack' ? window?.backpack :
-            window?.solana
-
-          if (walletAdapter) {
-            const { signature } = await deactivateDatasetOnChain(
-              walletAdapter,
-              publicKey,
-              { datasetId: id }
-            )
-            txSig = signature
-          }
-        } catch (walletErr) {
-          addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
-        }
-      }
-
-      addToast(txSig
-        ? `Dataset deactivated and confirmed on Solana!`
-        : `Dataset deactivated successfully!`
-      )
+      addToast(`Dataset deactivated and confirmed on Solana!`)
       loadData()
     } catch (err) {
-      addToast('Error: ' + err.message, 'error')
+      if (err.message?.includes('rejected') || err.code === 4001) {
+        addToast('Transaction rejected by wallet', 'error')
+      } else {
+        addToast('Error: ' + err.message, 'error')
+      }
     } finally {
       setDeactivating(false)
     }
@@ -288,7 +285,7 @@ export default function DatasetDetail({ addToast }) {
     return (
       <div className="page-container">
         <div className="empty-state">
-          <div className="empty-state-icon">❌</div>
+          <div className="empty-state-icon"></div>
           <h3>Dataset Not Found</h3>
           <p>The dataset ID "{id}" does not exist on-chain.</p>
           <Link to="/dashboard" className="btn btn-primary">Back to Dashboard</Link>
@@ -318,14 +315,14 @@ export default function DatasetDetail({ addToast }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ flex: 1 }}>
             <h1 className="detail-title">{dataset.name}</h1>
-            <div className="detail-authority">👤 {dataset.authority}</div>
+            <div className="detail-authority"> {dataset.authority}</div>
             <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginTop: '12px' }}>
               {dataset.description}
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
             <span className={`dataset-card-badge ${dataset.isActive ? 'badge-active' : ''}`} style={{ fontSize: '0.8rem', padding: '6px 14px', background: !dataset.isActive ? 'rgba(255,107,53,0.1)' : undefined, color: !dataset.isActive ? '#ff6b35' : undefined, border: !dataset.isActive ? '1px solid rgba(255,107,53,0.2)' : undefined }}>
-              {dataset.isActive ? '● Active' : '● Inactive'}
+              {dataset.isActive ? ' Active' : ' Inactive'}
             </span>
             {/* ── Action Buttons (Owner Only) ── */}
             {isOwner && dataset.isActive && (
@@ -335,14 +332,14 @@ export default function DatasetDetail({ addToast }) {
                    onClick={() => { setShowUpdate(v => !v); setShowTransfer(false); setTxSignature(null) }}
                    style={{ fontSize: '0.82rem' }}
                  >
-                   {showUpdate ? '✕ Cancel Update' : '↑ Update'}
+                   {showUpdate ? ' Cancel Update' : ' Update'}
                  </button>
                  <button
                    className="btn btn-secondary btn-sm"
                    onClick={() => { setShowTransfer(v => !v); setShowUpdate(false); setTxSignature(null) }}
                    style={{ fontSize: '0.82rem' }}
                  >
-                   {showTransfer ? '✕ Cancel Transfer' : '🔄 Transfer'}
+                   {showTransfer ? ' Cancel Transfer' : ' Transfer'}
                  </button>
                  <button
                    className="btn btn-ghost btn-sm"
@@ -350,7 +347,7 @@ export default function DatasetDetail({ addToast }) {
                    disabled={deactivating}
                    style={{ fontSize: '0.82rem', color: '#ff6b35', border: '1px solid rgba(255, 107, 53, 0.3)' }}
                  >
-                   {deactivating ? '...' : '🛑 Deactivate'}
+                   {deactivating ? '...' : ' Deactivate'}
                  </button>
               </div>
             )}
@@ -401,7 +398,7 @@ export default function DatasetDetail({ addToast }) {
               padding: 'var(--space-xl)',
             }}>
               <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-lg)', color: 'var(--accent-green)' }}>
-                ↑ Publish New Version — v{dataset.versionCount + 1}
+                 Publish New Version — v{dataset.versionCount + 1}
               </h3>
 
               <form onSubmit={handleUpdate}>
@@ -421,7 +418,7 @@ export default function DatasetDetail({ addToast }) {
                       style={{ display: 'none' }}
                       onChange={handleFileDrop}
                     />
-                    <div className="drop-icon" style={{ fontSize: '1.8rem', marginBottom: '8px' }}>📂</div>
+                    <div className="drop-icon" style={{ fontSize: '1.8rem', marginBottom: '8px' }}></div>
                     <p style={{ margin: 0 }}>
                       {newFileName ? `Selected: ${newFileName}` : 'Drag & drop updated file, or click to browse'}
                     </p>
@@ -446,7 +443,7 @@ export default function DatasetDetail({ addToast }) {
                   <label>What changed in this version? *</label>
                   <textarea
                     className="input-field"
-                    placeholder="e.g., Added Q1 2025 data, corrected outliers in columns 4-7, expanded sample size..."
+                    placeholder="e.g., Added Q1 2025 data, corrected outliers in columns 4-7..."
                     value={changeDesc}
                     onChange={e => setChangeDesc(e.target.value)}
                     rows={3}
@@ -454,7 +451,7 @@ export default function DatasetDetail({ addToast }) {
                   />
                 </div>
 
-                {/* Wallet status */}
+                               {/* Wallet Status */}
                 <div style={{
                   padding: '10px 14px',
                   background: connected ? 'rgba(0,229,160,0.05)' : 'rgba(255,107,53,0.05)',
@@ -468,15 +465,15 @@ export default function DatasetDetail({ addToast }) {
                   justifyContent: 'space-between',
                 }}>
                   {connected
-                    ? `✅ Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
-                    : '⚠️ No wallet — version will save in demo mode only'
+                    ? ` Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
+                    : ' Wallet required to publish updates on-chain'
                   }
                   {!connected && (
                     <button type="button" className="btn btn-ghost btn-sm"
                       style={{ color: 'var(--accent-cyan)' }}
                       onClick={() => setModalOpen(true)}
                     >
-                      Connect Wallet →
+                      Connect Wallet
                     </button>
                   )}
                 </div>
@@ -501,7 +498,7 @@ export default function DatasetDetail({ addToast }) {
                       </>
                     ) : (
                       <>
-                        {connected ? 'Sign & Publish v' : 'Publish v'}{dataset.versionCount + 1}
+                        Sign & Publish v{dataset.versionCount + 1}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M5 12h14M12 5l7 7-7 7"/>
                         </svg>
@@ -525,7 +522,7 @@ export default function DatasetDetail({ addToast }) {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '1.2rem' }}>✅</span>
+                        <span style={{ fontSize: '1.2rem' }}></span>
                         <strong style={{ color: 'var(--accent-green)' }}>Confirmed on Solana !</strong>
                       </div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: '10px' }}>
@@ -560,7 +557,7 @@ export default function DatasetDetail({ addToast }) {
               padding: 'var(--space-xl)',
             }}>
               <h3 style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--accent-cyan)' }}>
-                🔄 Transfer Dataset Ownership
+                 Transfer Dataset Ownership
               </h3>
               <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', fontSize: '0.9rem' }}>
                 Transferring ownership grants full control (including updates and deactivation) to the new wallet address. You will lose access to administrative functions for this dataset.
@@ -594,7 +591,7 @@ export default function DatasetDetail({ addToast }) {
                   >
                     {transferring ? (
                       <><div className="spinner" style={{ width: 16, height: 16, filter: 'invert(1)' }}></div> Processing...</>
-                    ) : 'Confirm Transfer 🔄'}
+                    ) : 'Confirm Transfer '}
                   </button>
                 </div>
               </form>

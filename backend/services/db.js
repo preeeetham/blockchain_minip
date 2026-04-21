@@ -159,8 +159,8 @@ async function getStats() {
   };
 }
 
-async function registerDataset({ name, description, fileHash, ipfsCid, metadataUri, authority }) {
-  const datasetId = generateDatasetId(name, authority);
+async function registerDataset({ datasetId: suppliedId, name, description, fileHash, ipfsCid, metadataUri, authority, txSignature }) {
+  const datasetId = suppliedId || generateDatasetId(name, authority);
   const now = Math.floor(Date.now() / 1000);
 
   const record = new Dataset({
@@ -190,20 +190,18 @@ async function registerDataset({ name, description, fileHash, ipfsCid, metadataU
     ipfsCid: ipfsCid || '',
   }).save();
 
-  const txSignature = computeHash(`tx-${datasetId}-${now}`);
-  return { datasetId, record: record.toObject(), txSignature };
+  const resolvedTxSig = txSignature || computeHash(`tx-${datasetId}-${now}`);
+  return { datasetId, record: record.toObject(), txSignature: resolvedTxSig };
 }
 
-async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCid, authority }) {
+async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCid, authority, txSignature }) {
   const dataset = await Dataset.findOne({ datasetId });
   if (!dataset) throw new Error('Dataset not found');
 
-  // Reject if the hash hasn't changed — same file = no real update
   if (newFileHash === dataset.currentHash) {
     throw new Error('New file hash is identical to the current version — no changes detected');
   }
 
-  // Enforce authority check
   if (dataset.authority !== authority) {
     throw new Error('Unauthorized: only dataset owner can perform this action');
   }
@@ -227,8 +225,8 @@ async function updateDataset({ datasetId, newFileHash, changeDescription, ipfsCi
   dataset.updatedAt = now;
   await dataset.save();
 
-  const txSignature = computeHash(`tx-update-${datasetId}-${now}`);
-  return { versionRecord: versionRecord.toObject(), txSignature };
+  const resolvedTxSig = txSignature || computeHash(`tx-update-${datasetId}-${now}`);
+  return { versionRecord: versionRecord.toObject(), txSignature: resolvedTxSig };
 }
 
 async function verifyHash(hash) {
@@ -248,7 +246,7 @@ async function verifyHash(hash) {
   return { found: false };
 }
 
-async function transferOwnership(datasetId, newAuthority, authority) {
+async function transferOwnership(datasetId, newAuthority, authority, txSignature) {
   const dataset = await Dataset.findOne({ datasetId, isActive: true });
   if (!dataset) throw new Error('Dataset not found or inactive');
 
@@ -256,15 +254,30 @@ async function transferOwnership(datasetId, newAuthority, authority) {
     throw new Error('Unauthorized: only dataset owner can perform this action');
   }
 
+  const now = Math.floor(Date.now() / 1000);
+  const newVersionNumber = dataset.versionCount + 1;
+
+  const versionRecord = await new Version({
+    datasetId,
+    versionNumber: newVersionNumber,
+    previousHash: dataset.currentHash,
+    fileHash: dataset.currentHash,
+    changeDescription: `Ownership transferred from ${authority} to ${newAuthority}`,
+    updatedBy: authority,
+    timestamp: now,
+    ipfsCid: dataset.ipfsCid || '',
+  }).save();
+
   dataset.authority = newAuthority;
-  dataset.updatedAt = Math.floor(Date.now() / 1000);
+  dataset.versionCount = newVersionNumber;
+  dataset.updatedAt = now;
   await dataset.save();
 
-  const txSignature = computeHash(`tx-transfer-${datasetId}-${dataset.updatedAt}`);
-  return { success: true, newAuthority, txSignature };
+  const resolvedTxSig = txSignature || computeHash(`tx-transfer-${datasetId}-${now}`);
+  return { success: true, newAuthority, txSignature: resolvedTxSig, versionRecord: versionRecord.toObject() };
 }
 
-async function deactivateDataset(datasetId, authority) {
+async function deactivateDataset(datasetId, authority, txSignature) {
   const dataset = await Dataset.findOne({ datasetId, isActive: true });
   if (!dataset) throw new Error('Dataset not found or already inactive');
 
@@ -276,8 +289,8 @@ async function deactivateDataset(datasetId, authority) {
   dataset.updatedAt = Math.floor(Date.now() / 1000);
   await dataset.save();
 
-  const txSignature = computeHash(`tx-deactivate-${datasetId}-${dataset.updatedAt}`);
-  return { success: true, txSignature };
+  const resolvedTxSig = txSignature || computeHash(`tx-deactivate-${datasetId}-${dataset.updatedAt}`);
+  return { success: true, txSignature: resolvedTxSig };
 }
 
 module.exports = {

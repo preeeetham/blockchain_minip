@@ -38,10 +38,13 @@
       "name": "transferOwnership",
       "accounts": [
         { "name": "datasetRecord", "isMut": true, "isSigner": false },
-        { "name": "authority", "isMut": false, "isSigner": true }
+        { "name": "versionRecord", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
       ],
       "args": [
         { "name": "datasetId", "type": "string" },
+        { "name": "versionNumber", "type": "u32" },
         { "name": "newAuthority", "type": "publicKey" }
       ]
     },

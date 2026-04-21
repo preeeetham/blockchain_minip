@@ -112,19 +112,19 @@ export default function Home() {
 
           <div className="features-grid">
             <motion.div className="glass-card feature-card" variants={fadeUp} custom={0}>
-              <div className="feature-icon">🔗</div>
+              <div className="feature-icon"></div>
               <h3>Immutable Records</h3>
               <p>Every dataset registration creates a permanent, tamper-proof record on Solana. SHA-256 hashes ensure data integrity that cannot be altered or deleted.</p>
             </motion.div>
 
             <motion.div className="glass-card feature-card" variants={fadeUp} custom={1}>
-              <div className="feature-icon">📊</div>
+              <div className="feature-icon"></div>
               <h3>Version Tracking</h3>
               <p>Full version history with linked hash chains. Every modification creates a new version record, building a complete provenance trail from origin to current state.</p>
             </motion.div>
 
             <motion.div className="glass-card feature-card" variants={fadeUp} custom={2}>
-              <div className="feature-icon">✅</div>
+              <div className="feature-icon"></div>
               <h3>Instant Verification</h3>
               <p>Any researcher can verify dataset authenticity by comparing SHA-256 hashes on-chain. No trust required — cryptographic proof guarantees data hasn't been tampered with.</p>
             </motion.div>

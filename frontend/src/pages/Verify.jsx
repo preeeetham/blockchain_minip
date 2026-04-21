@@ -28,7 +28,7 @@ export default function Verify({ addToast }) {
       setResult(data)
       setSearched(true)
       if (data.found) {
-        addToast('Hash verified successfully! ✅')
+        addToast('Hash verified successfully! ')
       } else {
         addToast('Hash not found on-chain', 'error')
       }
@@ -154,7 +154,7 @@ export default function Verify({ addToast }) {
                 {result.found ? (
                   <div className="verify-result success">
                     <div className="verify-result-header">
-                      <div className="verify-icon success-icon">✅</div>
+                      <div className="verify-icon success-icon"></div>
                       <div>
                         <h3 style={{ color: 'var(--accent-green)' }}>Hash Verified!</h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -188,7 +188,7 @@ export default function Verify({ addToast }) {
                 ) : (
                   <div className="verify-result not-found">
                     <div className="verify-result-header">
-                      <div className="verify-icon fail-icon">❌</div>
+                      <div className="verify-icon fail-icon"></div>
                       <div>
                         <h3 style={{ color: 'var(--accent-orange)' }}>Hash Not Found</h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

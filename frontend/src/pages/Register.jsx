@@ -40,6 +40,12 @@ export default function Register({ addToast }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!connected || !publicKey) {
+      addToast('Please connect your Solana wallet first', 'error')
+      return
+    }
+
     if (!form.name || !fileHash) {
       addToast('Please fill in the name and upload a file', 'error')
       return
@@ -48,79 +54,72 @@ export default function Register({ addToast }) {
     setSubmitting(true)
     setTxSignature(null)
     let txSig = null
+    let dsId = null
 
     try {
-      // ─── Step 1: Register on backend (get datasetId) ──────────
-      setSubmitStep('Registering dataset...')
+      // ─── Step 1: Generate Dataset ID ──────────
+      const rawString = `${form.name}-${publicKey}-${Date.now()}`;
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawString));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      dsId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+
+      // ─── Step 2: Sign transaction with wallet ──
+      setSubmitStep('Waiting for wallet approval...')
+      
+      const savedId = localStorage.getItem('dataprove_wallet')
+      let walletAdapter = null
+      if (savedId === 'phantom') walletAdapter = window?.phantom?.solana
+      else if (savedId === 'solflare') walletAdapter = window?.solflare
+      else if (savedId === 'backpack') walletAdapter = window?.backpack
+      else walletAdapter = window?.solana
+
+      if (!walletAdapter) {
+        throw new Error('Wallet extension not found');
+      }
+
+      setSubmitStep('Sign the transaction in your wallet...')
+      const { signature } = await registerDatasetOnChain(
+        walletAdapter,
+        publicKey,
+        { 
+          datasetId: dsId, 
+          name: form.name, 
+          fileHash,
+          description: form.description,
+          ipfsCid: form.ipfsCid,
+          metadataUri: form.metadataUri
+        }
+      )
+      txSig = signature
+      setTxSignature(signature)
+      
+      // ─── Step 3: Register on backend ──────────
+      setSubmitStep('Syncing record...')
       const res = await fetch('/api/datasets/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          datasetId: dsId,
           ...form,
           fileHash,
-          authority: publicKey || 'DemoWallet' + Date.now(),
+          authority: publicKey,
+          txSignature: txSig,
         }),
       })
       const data = await res.json()
       if (!data.success) {
-        addToast(data.error || 'Registration failed', 'error')
-        return
+        throw new Error(data.error || 'Server sync failed')
       }
 
-      setRegisteredId(data.datasetId)
+      setRegisteredId(dsId)
+      addToast('Dataset signed & recorded on Solana Devnet!')
 
-      // ─── Step 2: Sign transaction with wallet (if connected) ──
-      if (connected && publicKey) {
-        setSubmitStep('Waiting for wallet approval...')
-        try {
-          // Get the connected wallet adapter from the window object
-          const savedId = localStorage.getItem('dataprove_wallet')
-          let walletAdapter = null
-          if (savedId === 'phantom') walletAdapter = window?.phantom?.solana
-          else if (savedId === 'solflare') walletAdapter = window?.solflare
-          else if (savedId === 'backpack') walletAdapter = window?.backpack
-          else walletAdapter = window?.solana
-
-          if (walletAdapter) {
-            setSubmitStep('Sign the transaction in your wallet...')
-            const { signature } = await registerDatasetOnChain(
-              walletAdapter,
-              publicKey,
-              { 
-                datasetId: data.datasetId, 
-                name: form.name, 
-                fileHash,
-                description: form.description,
-                ipfsCid: form.ipfsCid,
-                metadataUri: form.metadataUri
-              }
-            )
-            txSig = signature
-            setTxSignature(signature)
-            setSubmitStep('Transaction confirmed!')
-          }
-        } catch (walletErr) {
-          // User rejected or network error — still saved off-chain
-          if (walletErr.message?.includes('rejected') || walletErr.code === 4001) {
-            addToast('Transaction rejected by wallet', 'error')
-          } else {
-            addToast(`On-chain signing failed: ${walletErr.message}`, 'error')
-          }
-          // Still navigate — off-chain record was saved
-          navigate(`/dataset/${data.datasetId}`)
-          return
-        }
-      }
-
-      // ─── Step 3: Done ─────────────────────────────────────────
-      if (txSig) {
-        addToast('Dataset signed & recorded on Solana Devnet! 🎉')
-      } else {
-        addToast('Dataset registered in demo mode (connect wallet for on-chain signing)')
-        navigate(`/dataset/${data.datasetId}`)
-      }
     } catch (err) {
-      addToast('Error: ' + err.message, 'error')
+      if (err.message?.includes('rejected') || err.code === 4001) {
+        addToast('Transaction rejected by wallet', 'error')
+      } else {
+        addToast('Error: ' + err.message, 'error')
+      }
     } finally {
       if (!txSig) setSubmitting(false)
       setSubmitStep('')
@@ -164,7 +163,7 @@ export default function Register({ addToast }) {
                 style={{ display: 'none' }}
                 onChange={handleFileDrop}
               />
-              <div className="drop-icon">📁</div>
+              <div className="drop-icon"></div>
               <p>
                 {fileName
                   ? `Selected: ${fileName}`
@@ -250,8 +249,8 @@ export default function Register({ addToast }) {
             justifyContent: 'space-between',
           }}>
             {connected
-              ? `✅ Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
-              : '⚠️ No wallet connected — transaction will use demo mode'
+              ? ` Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
+              : ' Wallet required to register datasets on-chain'
             }
             {!connected && (
               <button
@@ -260,7 +259,7 @@ export default function Register({ addToast }) {
                 style={{ color: 'var(--accent-cyan)' }}
                 onClick={() => setModalOpen(true)}
               >
-                Connect Wallet →
+                Connect Wallet
               </button>
             )}
           </div>
@@ -278,7 +277,7 @@ export default function Register({ addToast }) {
                 </>
               ) : (
                 <>
-                  {connected ? 'Sign & Register on Solana' : 'Register Dataset'}
+                  Sign & Register on Solana
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
@@ -302,7 +301,7 @@ export default function Register({ addToast }) {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '1.3rem' }}>✅</span>
+                  <span style={{ fontSize: '1.3rem' }}></span>
                   <strong style={{ color: 'var(--accent-green)' }}>Transaction confirmed on Solana Devnet!</strong>
                 </div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: '12px' }}>
