@@ -625,7 +625,11 @@ export default function DatasetDetail({ addToast }) {
               >
                 <div className="version-header">
                   <div className="version-number">
-                    <span>Version {v.versionNumber}</span>
+                    <span>
+                      {v.changeDescription?.startsWith('Ownership transferred') 
+                        ? 'Ownership Transfer' 
+                        : `Version ${v.versionNumber}`}
+                    </span>
                     {i === 0 && (
                       <span className="dataset-card-badge badge-version" style={{ marginLeft: '8px', fontSize: '0.65rem' }}>
                         LATEST
