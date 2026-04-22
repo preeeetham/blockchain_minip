@@ -260,28 +260,15 @@ async function transferOwnership(datasetId, newAuthority, authority, txSignature
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const newVersionNumber = dataset.versionCount + 1;
   const resolvedTxSig = txSignature || computeHash(`tx-transfer-${datasetId}-${now}`);
 
-  const versionRecord = await new Version({
-    datasetId,
-    versionNumber: newVersionNumber,
-    previousHash: dataset.currentHash,
-    fileHash: dataset.currentHash,
-    changeDescription: `Ownership transferred from ${authority} to ${newAuthority}`,
-    updatedBy: authority,
-    txSignature: resolvedTxSig,
-    timestamp: now,
-    ipfsCid: dataset.ipfsCid || '',
-  }).save();
-
+  // Only update authority — version count is NOT bumped, no Version record created
   dataset.authority = newAuthority;
-  dataset.versionCount = newVersionNumber;
   dataset.updatedAt = now;
   dataset.txSignature = resolvedTxSig;
   await dataset.save();
 
-  return { success: true, newAuthority, txSignature: resolvedTxSig, versionRecord: versionRecord.toObject() };
+  return { success: true, newAuthority, txSignature: resolvedTxSig };
 }
 
 async function deactivateDataset(datasetId, authority, txSignature) {

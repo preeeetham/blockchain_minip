@@ -147,28 +147,25 @@ export async function updateDatasetOnChain(walletAdapter, publicKeyStr, updatePa
 }
 
 /**
- * Transfer ownership of a dataset on-chain
+ * Transfer ownership of a dataset on-chain.
+ * No version record is created — only the authority field on the Dataset PDA is updated.
  */
 export async function transferOwnershipOnChain(walletAdapter, publicKeyStr, payload) {
   const walletPubkey = new PublicKey(publicKeyStr);
   const datasetPda = getDatasetPda(payload.datasetId);
-  const versionPda = getVersionPda(payload.datasetId, payload.versionNumber);
   const newAuthorityKey = new PublicKey(payload.newAuthority);
 
   const disc = await getDiscriminator('transfer_ownership');
   const data = Buffer.concat([
     disc,
     borshString(payload.datasetId),
-    borshU32(payload.versionNumber),
     borshPubkey(newAuthorityKey),
   ]);
 
   const ix = new TransactionInstruction({
     keys: [
       { pubkey: datasetPda, isSigner: false, isWritable: true },
-      { pubkey: versionPda, isSigner: false, isWritable: true },
-      { pubkey: walletPubkey, isSigner: true, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: walletPubkey, isSigner: true, isWritable: false },
     ],
     programId: PROGRAM_ID,
     data,

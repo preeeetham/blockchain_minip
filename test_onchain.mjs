@@ -203,29 +203,24 @@ async function testUpdate(wallet, datasetId, newDatasetFile, versionNumber) {
   return { sig, newFileHash };
 }
 
-async function testTransfer(fromWallet, datasetId, toWallet, versionNumber) {
+async function testTransfer(fromWallet, datasetId, toWallet) {
   const datasetPda = getDatasetPda(datasetId);
-  const versionPda = getVersionPda(datasetId, versionNumber);
   const newAuthority = toWallet.publicKey;
 
   console.log(`  From:         ${fromWallet.publicKey.toBase58()}`);
   console.log(`  To:           ${newAuthority.toBase58()}`);
-  console.log(`  Version:      ${versionNumber}`);
 
   const disc = await getDiscriminator('transfer_ownership');
   const data = Buffer.concat([
     disc,
     borshString(datasetId),
-    borshU32(versionNumber),
     borshPubkey(newAuthority),
   ]);
 
   const ix = new TransactionInstruction({
     keys: [
       { pubkey: datasetPda, isSigner: false, isWritable: true },
-      { pubkey: versionPda, isSigner: false, isWritable: true },
-      { pubkey: fromWallet.publicKey, isSigner: true, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: fromWallet.publicKey, isSigner: true, isWritable: false },
     ],
     programId: PROGRAM_ID,
     data,
@@ -334,7 +329,7 @@ async function main() {
   console.log('-'.repeat(70));
   console.log('TEST 3: Transfer Ownership (Wallet A → Wallet B)');
   console.log('-'.repeat(70));
-  const xfer = await testTransfer(walletA, reg.datasetId, walletB, 3);
+  const xfer = await testTransfer(walletA, reg.datasetId, walletB);
   results.transfer = xfer;
   console.log('  PASSED\n');
 

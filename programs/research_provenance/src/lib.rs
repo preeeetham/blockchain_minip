@@ -84,35 +84,19 @@ pub mod research_provenance {
     /// Transfer dataset ownership to another researcher
     pub fn transfer_ownership(
         ctx: Context<TransferOwnership>,
-        dataset_id: String,
-        version_number: u32,
+        _dataset_id: String,
         new_authority: Pubkey,
     ) -> Result<()> {
         let dataset = &mut ctx.accounts.dataset_record;
-        let version = &mut ctx.accounts.version_record;
         let clock = Clock::get()?;
 
         require!(
             ctx.accounts.authority.key() == dataset.authority,
             ProvenanceError::Unauthorized
         );
-        require!(
-            version_number == dataset.version_count + 1,
-            ProvenanceError::InvalidVersionNumber
-        );
 
-        // Store version record for transfer
-        version.dataset_id = dataset_id;
-        version.version_number = version_number;
-        version.previous_hash = dataset.current_hash.clone();
-        version.file_hash = dataset.current_hash.clone(); // File hasn't changed
-        version.change_description = format!("Ownership transferred from {} to {}", dataset.authority, new_authority);
-        version.updated_by = ctx.accounts.authority.key();
-        version.timestamp = clock.unix_timestamp;
-        version.ipfs_cid = dataset.ipfs_cid.clone();
-
+        // Only update the authority — version count is NOT incremented
         dataset.authority = new_authority;
-        dataset.version_count = version_number;
         dataset.updated_at = clock.unix_timestamp;
         msg!("Ownership transferred to {}", new_authority);
         Ok(())
@@ -177,7 +161,7 @@ pub struct UpdateDataset<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(dataset_id: String, version_number: u32)]
+#[instruction(dataset_id: String)]
 pub struct TransferOwnership<'info> {
     #[account(
         mut,
@@ -185,17 +169,7 @@ pub struct TransferOwnership<'info> {
         bump
     )]
     pub dataset_record: Account<'info, DatasetRecord>,
-    #[account(
-        init,
-        payer = authority,
-        space = 8 + VersionRecord::INIT_SPACE,
-        seeds = [b"version", dataset_id.as_bytes(), &version_number.to_le_bytes()],
-        bump
-    )]
-    pub version_record: Account<'info, VersionRecord>,
-    #[account(mut)]
     pub authority: Signer<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]

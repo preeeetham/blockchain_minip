@@ -176,11 +176,10 @@ export default function DatasetDetail({ addToast }) {
 
       if (!walletAdapter) throw new Error('Wallet extension not found')
 
-      const targetVersionNum = dataset.versionCount + 1
       const { signature } = await transferOwnershipOnChain(
         walletAdapter,
         publicKey,
-        { datasetId: id, newAuthority: newAuthority.trim(), versionNumber: targetVersionNum }
+        { datasetId: id, newAuthority: newAuthority.trim() }
       )
       txSig = signature
 
