@@ -1,12 +1,12 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 const datasetRoutes = require('./routes/datasets');
-const { seedDemoData } = require('./services/db');
+const { pool, DATABASE_URL } = require('./services/pg');
+const { initDb } = require('./services/db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/dataprove';
 
 // Middleware
 app.use(cors({
@@ -20,12 +20,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api/datasets', datasetRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let database = 'disconnected';
+  try {
+    await pool.query('SELECT 1');
+    database = 'connected';
+  } catch {
+    database = 'disconnected';
+  }
   res.json({
     status: 'ok',
     service: 'Research Provenance API',
-    network: 'Solana Devnet (Simulated)',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    network: 'Solana Devnet',
+    database,
     timestamp: new Date().toISOString(),
   });
 });
@@ -50,24 +57,24 @@ app.get('/', (req, res) => {
   });
 });
 
-// ─── Connect to MongoDB then start server ───────────────────────────────────
+// ─── Connect to Supabase Postgres then start server ─────────────────────────
 async function start() {
   try {
-    await mongoose.connect(MONGO_URI);
-    console.log(`✅ MongoDB connected → ${MONGO_URI}`);
+    await pool.query('SELECT 1');
+    const host = new URL(DATABASE_URL).host;
+    console.log(`Supabase Postgres connected -> ${host}`);
 
-    // Seed demo data on first run (no-op if data already exists)
-    await seedDemoData();
+    // Create tables (idempotent) and seed demo data on first run
+    await initDb();
 
     app.listen(PORT, () => {
-      console.log(`\n🔬 Research Data Provenance API`);
-      console.log(`   Server: http://localhost:${PORT}`);
-      console.log(`   DB:     ${MONGO_URI}`);
-      console.log(`   Network: Solana Devnet (Simulated Mode)\n`);
+      console.log(`\nResearch Data Provenance API`);
+      console.log(`   Server:  http://localhost:${PORT}`);
+      console.log(`   DB:      Supabase Postgres (${host})`);
+      console.log(`   Network: Solana Devnet\n`);
     });
   } catch (err) {
-    console.error('❌ Failed to connect to MongoDB:', err.message);
-    console.error('   Make sure Docker is running: docker compose up -d');
+    console.error('Failed to connect to Supabase Postgres:', err.message);
     process.exit(1);
   }
 }
