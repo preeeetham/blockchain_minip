@@ -16,15 +16,11 @@ export default function Navbar({ addToast }) {
     <nav className="navbar">
       <Link to="/" className="navbar-brand">
         <svg viewBox="0 0 32 32" fill="none">
-          <rect width="32" height="32" rx="8" fill="url(#brand-grad)" />
-          <path d="M8 16L12 10H20L24 16L20 22H12L8 16Z" fill="white" fillOpacity="0.9" />
-          <path d="M13 16L15 13H17L19 16L17 19H15L13 16Z" fill="url(#brand-grad)" />
-          <defs>
-            <linearGradient id="brand-grad" x1="0" y1="0" x2="32" y2="32">
-              <stop stopColor="#00d2ff" />
-              <stop offset="1" stopColor="#7b2ff7" />
-            </linearGradient>
-          </defs>
+          <rect x="1" y="1" width="30" height="30" fill="#f2ede1" stroke="#141414" strokeWidth="2" />
+          <rect x="1" y="1" width="15" height="15" fill="#e0241f" stroke="#141414" strokeWidth="2" />
+          <circle cx="23.5" cy="8.5" r="7.5" fill="#1a3fd6" stroke="#141414" strokeWidth="2" />
+          <path d="M1 31L16 16V31H1Z" fill="#f6c018" stroke="#141414" strokeWidth="2" />
+          <rect x="16" y="16" width="15" height="15" fill="#141414" />
         </svg>
         <span className="gradient-text">DataProve</span>
       </Link>

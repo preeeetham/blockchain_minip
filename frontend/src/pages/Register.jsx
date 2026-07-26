@@ -236,27 +236,15 @@ export default function Register({ addToast }) {
           </div>
 
           {/* Wallet Status */}
-          <div style={{
-            padding: '12px 16px',
-            background: connected ? 'rgba(0,229,160,0.05)' : 'rgba(255,107,53,0.05)',
-            border: `1px solid ${connected ? 'rgba(0,229,160,0.2)' : 'rgba(255,107,53,0.2)'}`,
-            borderRadius: 'var(--radius-md)',
-            fontSize: '0.85rem',
-            color: connected ? 'var(--accent-green)' : '#ff9966',
-            marginBottom: 'var(--space-xl)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
+          <div className={`status-banner ${connected ? 'status-ok' : 'status-warn'}`}>
             {connected
-              ? ` Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
-              : ' Wallet required to register datasets on-chain'
+              ? `Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
+              : 'Wallet required to register datasets on-chain'
             }
             {!connected && (
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
-                style={{ color: 'var(--accent-cyan)' }}
+                className="btn btn-secondary btn-sm"
                 onClick={() => setModalOpen(true)}
               >
                 Connect Wallet
@@ -290,21 +278,14 @@ export default function Register({ addToast }) {
           <AnimatePresence>
             {txSignature && (
               <motion.div
+                className="tx-banner"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                style={{
-                  marginTop: 'var(--space-xl)',
-                  padding: '16px 20px',
-                  background: 'rgba(0,229,160,0.07)',
-                  border: '1px solid rgba(0,229,160,0.25)',
-                  borderRadius: 'var(--radius-md)',
-                }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '1.3rem' }}></span>
-                  <strong style={{ color: 'var(--accent-green)' }}>Transaction confirmed on Solana Devnet!</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <strong style={{ color: 'var(--bh-yellow)', textTransform: 'uppercase' }}>Transaction confirmed on Solana Devnet</strong>
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: '12px' }}>
+                <div className="tx-sig">
                   {txSignature}
                 </div>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

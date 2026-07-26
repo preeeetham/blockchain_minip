@@ -392,12 +392,12 @@ export default function DatasetDetail({ addToast }) {
             style={{ overflow: 'hidden' }}
           >
             <div className="glass-card" style={{
-              border: '1px solid rgba(0,229,160,0.25)',
+              borderTop: '10px solid var(--bh-green)',
               marginBottom: 'var(--space-xl)',
               padding: 'var(--space-xl)',
             }}>
-              <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-lg)', color: 'var(--accent-green)' }}>
-                 Publish New Version — v{dataset.versionCount + 1}
+              <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-lg)', color: 'var(--accent-green)', textTransform: 'uppercase' }}>
+                Publish New Version — v{dataset.versionCount + 1}
               </h3>
 
               <form onSubmit={handleUpdate}>
@@ -450,26 +450,15 @@ export default function DatasetDetail({ addToast }) {
                   />
                 </div>
 
-                               {/* Wallet Status */}
-                <div style={{
-                  padding: '10px 14px',
-                  background: connected ? 'rgba(0,229,160,0.05)' : 'rgba(255,107,53,0.05)',
-                  border: `1px solid ${connected ? 'rgba(0,229,160,0.2)' : 'rgba(255,107,53,0.2)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.83rem',
-                  color: connected ? 'var(--accent-green)' : '#ff9966',
-                  marginBottom: 'var(--space-lg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}>
+                {/* Wallet Status */}
+                <div className={`status-banner ${connected ? 'status-ok' : 'status-warn'}`}
+                  style={{ marginBottom: 'var(--space-lg)' }}>
                   {connected
-                    ? ` Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
-                    : ' Wallet required to publish updates on-chain'
+                    ? `Wallet: ${publicKey?.slice(0,8)}...${publicKey?.slice(-4)}`
+                    : 'Wallet required to publish updates on-chain'
                   }
                   {!connected && (
-                    <button type="button" className="btn btn-ghost btn-sm"
-                      style={{ color: 'var(--accent-cyan)' }}
+                    <button type="button" className="btn btn-secondary btn-sm"
                       onClick={() => setModalOpen(true)}
                     >
                       Connect Wallet
@@ -510,21 +499,14 @@ export default function DatasetDetail({ addToast }) {
                 <AnimatePresence>
                   {txSignature && (
                     <motion.div
+                      className="tx-banner"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      style={{
-                        marginTop: 'var(--space-lg)',
-                        padding: '14px 18px',
-                        background: 'rgba(0,229,160,0.07)',
-                        border: '1px solid rgba(0,229,160,0.25)',
-                        borderRadius: 'var(--radius-md)',
-                      }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '1.2rem' }}></span>
-                        <strong style={{ color: 'var(--accent-green)' }}>Confirmed on Solana !</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <strong style={{ color: 'var(--bh-yellow)', textTransform: 'uppercase' }}>Confirmed on Solana</strong>
                       </div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)', wordBreak: 'break-all', marginBottom: '10px' }}>
+                      <div className="tx-sig">
                         {txSignature}
                       </div>
                       <a href={getExplorerUrl(txSignature)} target="_blank" rel="noopener noreferrer"
@@ -551,12 +533,12 @@ export default function DatasetDetail({ addToast }) {
             style={{ overflow: 'hidden' }}
           >
             <div className="glass-card" style={{
-              border: '1px solid rgba(0,183,255,0.25)',
+              borderTop: '10px solid var(--bh-blue)',
               marginBottom: 'var(--space-xl)',
               padding: 'var(--space-xl)',
             }}>
-              <h3 style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--accent-cyan)' }}>
-                 Transfer Dataset Ownership
+              <h3 style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--accent-cyan)', textTransform: 'uppercase' }}>
+                Transfer Dataset Ownership
               </h3>
               <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', fontSize: '0.9rem' }}>
                 Transferring ownership grants full control (including updates and deactivation) to the new wallet address. You will lose access to administrative functions for this dataset.

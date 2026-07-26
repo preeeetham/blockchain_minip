@@ -44,7 +44,7 @@ export default function Home() {
         >
           <motion.div className="hero-badge" variants={fadeUp} custom={0}>
             <span className="pulse-dot"></span>
-            Powered by Solana Blockchain
+            Powered by Solana
           </motion.div>
 
           <motion.h1 variants={fadeUp} custom={1}>
@@ -62,13 +62,13 @@ export default function Home() {
             <Link to="/register" className="btn btn-primary btn-lg">
               Register Dataset
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </Link>
             <Link to="/verify" className="btn btn-secondary btn-lg">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 12l2 2 4-4"/>
-                <circle cx="12" cy="12" r="10"/>
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="10" />
               </svg>
               Verify Hash
             </Link>
@@ -201,7 +201,7 @@ export default function Home() {
           <Link to="/register" className="btn btn-primary btn-lg">
             Get Started Free
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
+              <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </Link>
         </motion.div>
